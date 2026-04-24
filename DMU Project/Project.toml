@@ -1,0 +1,8 @@
+name = "PokemonBattle"
+uuid = "some-uuid-here"
+version = "0.1.0"
+
+[deps]
+POMDPs = "..."
+POMDPTools = "..."
+MCTS = "..."
