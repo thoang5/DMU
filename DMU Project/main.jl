@@ -1,41 +1,96 @@
 include("src/PokemonBattle.jl")
+using .PokemonBattle
 using Plots
+const PB = PokemonBattle
 
-const PB = Main.PokemonBattle
+# Moves
+tackle = PB.Move(:tackle, :NormalType, :damage, 40, 1.0, :none)
+thunderbolt = PB.Move(:thunderbolt, :ElectricType, :damage, 100, 1.0, :none)
+water_gun = PB.Move(:water_gun, :WaterType, :damage, 60, 1.0, :none)
+grass_knot = PB.Move(:grass_knot, :GrassType, :damage, 120, 1.0, :none)
+bite = PB.Move(:bite, :DarkType, :damage, 100, 1.0, :none)
+nuzzle = PB.Move(:nuzzle, :ElectricType, :damage, 40, 1.0, :paralyze)
 
-m = PokemonBattleMDP(
-    0.95,         # discount
-    ElectricType, # my type
-    WaterType,    # opp type
-    100,           # my max hp
-    100,           # opp max hp
-    1,            # my attack
-    1             # opp attack
+# Pokemon
+pikachu = PB.Pokemon(
+    :Pikachu,
+    :ElectricType,
+    1000,
+    Dict(
+        :move1 => tackle,
+        :move2 => thunderbolt,
+        :move3 => nuzzle,
+        :move4 => grass_knot
+    )
 )
 
-s0 = PokemonState(
-    m.my_max_hp,
-    m.opp_max_hp,
-    0,
-    0,
+squirtle = PB.Pokemon(
+    :Squirtle,
+    :WaterType,
+    1000,
+    Dict(
+        :move1 => tackle,
+        :move2 => water_gun,
+        :move3 => bite
+    )
+)
+
+# MDP
+m = PB.PokemonBattleMDP(
+    pikachu,
+    squirtle,
+    0.95
+)
+
+s0 = PB.PokemonState(
+    m.my_pokemon.max_hp,
+    m.opp_pokemon.max_hp,
+    :none,
+    :none,
     0,
     0
 )
 
-returns, avg_return = PB.evaluate_mcts(m; n_episodes=100)
+# -------------------------
+# Evaluate MCTS
+# -------------------------
 
-episodes = 1:length(returns)
+iteration_list = [1, 5, 10, 25, 50, 100, 250, 500]
 
-p = plot(
-    episodes,
-    returns,
-    xlabel = "Episode",
-    ylabel = "Return",
-    label = "Episode Return",
-    title = "MCTS Returns Over Episodes"
+iters, avg_returns, return_sems, win_rates, avg_turns = PB.evaluate_mcts_sweep(
+    m;
+    iteration_list = iteration_list,
+    n_episodes = 100,
+    depth = 10,
+    exploration_constant = 1.0,
+    max_turns = 50
 )
 
-hline!(p, [avg_return], label = "Average Return")
+p1 = plot(
+    iters,
+    avg_returns,
+    ribbon = return_sems,
+    marker = :circle,
+    xscale = :log10,
+    xlabel = "MCTS Iterations per Move",
+    ylabel = "Average Return",
+    label = "Average Return ± SEM",
+    title = "Average Return vs MCTS Search Budget"
+)
 
-savefig(p, "mcts_returns.png")
-println("Saved plot to mcts_returns.png")
+savefig(p1, "mcts_avg_return_vs_iterations.png")
+
+p2 = plot(
+    iters,
+    win_rates,
+    marker = :circle,
+    xscale = :log10,
+    xlabel = "MCTS Iterations per Move",
+    ylabel = "Win Rate",
+    ylim = (0, 1.2),
+    label = "Win Rate",
+    title = "Win Rate vs MCTS Search Budget"
+)
+
+savefig(p2, "mcts_win_rate_vs_iterations.png")
+

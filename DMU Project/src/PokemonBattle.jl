@@ -5,9 +5,11 @@ using POMDPTools
 using POMDPTools: SparseCat
 using MCTS
 using Random
+using Statistics
 
 export PokemonState, PokemonAction, PokemonBattleMDP
 export play_mcts_game, evaluate_mcts
+export evaluate_mcts_sweep, first_action_frequency_sweep
 
 include("types.jl")
 include("actions.jl")

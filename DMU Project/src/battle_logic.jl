@@ -1,4 +1,9 @@
-function resolve_turn(m::PokemonBattleMDP, s::PokemonState, my_action::PokemonAction, opp_action::PokemonAction)
+function resolve_turn(
+    m::PokemonBattleMDP,
+    s::PokemonState,
+    my_action::Symbol,
+    opp_action::Symbol
+)
     outcomes = Tuple{Float64, PokemonState}[]
 
     my_outcomes = apply_my_action(m, s, my_action)
@@ -19,8 +24,9 @@ function resolve_turn(m::PokemonBattleMDP, s::PokemonState, my_action::PokemonAc
     return outcomes
 end
 
-function sample_opponent_action(s::PokemonState, rng::AbstractRNG)
-    dist = opponent_policy(s)
+function sample_opponent_action(m::PokemonBattleMDP, s::PokemonState, rng::AbstractRNG)
+    dist = opponent_policy(m, s)
+
     x = rand(rng)
     cumulative = 0.0
 
@@ -31,8 +37,7 @@ function sample_opponent_action(s::PokemonState, rng::AbstractRNG)
         end
     end
 
-    # fallback because of floating point roundoff
-    return first(keys(dist))
+    return dist[end][1]
 end
 
 function sample_turn_outcome(outcomes::Vector{Tuple{Float64, PokemonState}}, rng::AbstractRNG)
@@ -52,5 +57,3 @@ function sample_turn_outcome(outcomes::Vector{Tuple{Float64, PokemonState}}, rng
 
     return outcomes[end][2]
 end
-
-

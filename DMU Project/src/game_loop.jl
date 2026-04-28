@@ -1,5 +1,12 @@
 function play_mcts_game(m::PokemonBattleMDP;
-                        start_state::PokemonState = PokemonState(10, 10, 0, 0, 0, 0),
+                        start_state::PokemonState = PokemonState(
+                            m.my_pokemon.max_hp,
+                            m.opp_pokemon.max_hp,
+                            :none,
+                            :none,
+                            0,
+                            0
+                        ),
                         max_turns::Int = 50,
                         seed::Int = 1,
                         verbose::Bool = true)
