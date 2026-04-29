@@ -68,7 +68,7 @@ iters, avg_returns, return_sems, win_rates, avg_turns = PB.evaluate_mcts_sweep(
 
 iters2, thunderbolt_freq = PB.first_action_frequency_sweep(
     m;
-    target_action = :move2,   # :move2 = Thunderbolt for Pikachu
+    target_action = :move2,
     iteration_list = iteration_list,
     n_trials = 100,
     depth = 10,
@@ -77,24 +77,38 @@ iters2, thunderbolt_freq = PB.first_action_frequency_sweep(
 
 iters3, grassknot_freq = PB.first_action_frequency_sweep(
     m;
-    target_action = :move4,   # :move4 = Grass Knot for Pikachu
+    target_action = :move4,
     iteration_list = iteration_list,
     n_trials = 100,
     depth = 10,
     exploration_constant = 1.0
 )
 
-p_grass = plot(
-    iters3,
-    grassknot_freq,
+iters4, tackle_freq = PB.first_action_frequency_sweep(
+    m;
+    target_action = :move1,
+    iteration_list = iteration_list,
+    n_trials = 100,
+    depth = 10,
+    exploration_constant = 1.0
+)
+
+p3 = plot(
+    iters2,
+    thunderbolt_freq,
     marker = :circle,
     xscale = :log10,
     xlabel = "MCTS Iterations per Move",
-    ylabel = "Frequency of Choosing Grass Knot",
+    ylabel = "First Move Selection Frequency",
     ylim = (0, 1.2),
-    label = ":move4 = Grass Knot",
-    title = "MCTS Grass Knot First Move Choice vs Search Budget"
+    label = ":move2 = Thunderbolt",
+    title = "MCTS First Move Choice vs Search Budget"
 )
+
+plot!(p3, iters3, grassknot_freq, marker = :square, label = ":move4 = Grass Knot")
+plot!(p3, iters4, tackle_freq, marker = :diamond, label = ":move1 = Tackle")
+
+savefig(p3, "mcts_first_move_frequency_vs_iterations.png")
 
 savefig(p_grass, "mcts_grassknot_frequency_vs_iterations.png")
 println("Saved mcts_grassknot_frequency_vs_iterations.png")
