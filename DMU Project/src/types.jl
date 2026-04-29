@@ -15,16 +15,21 @@ struct Pokemon
 end
 
 struct PokemonState
-    my_hp::Int
-    opp_hp::Int
-    my_status::Symbol
-    opp_status::Symbol
+    my_hps::Vector{Int}
+    opp_hps::Vector{Int}
+
+    my_statuses::Vector{Symbol}
+    opp_statuses::Vector{Symbol}
+
+    my_active::Int
+    opp_active::Int
+
     my_boost::Int
     opp_boost::Int
 end
 
 struct PokemonBattleMDP <: MDP{PokemonState, Symbol}
-    my_pokemon::Pokemon
-    opp_pokemon::Pokemon
+    my_team::Vector{Pokemon}
+    opp_team::Vector{Pokemon}
     discount_factor::Float64
 end

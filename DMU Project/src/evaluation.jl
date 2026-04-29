@@ -2,10 +2,12 @@ using Statistics
 
 function initial_pokemon_state(m::PokemonBattleMDP)
     return PokemonState(
-        m.my_pokemon.max_hp,
-        m.opp_pokemon.max_hp,
-        :none,
-        :none,
+        [p.max_hp for p in m.my_team],
+        [p.max_hp for p in m.opp_team],
+        fill(:none, length(m.my_team)),
+        fill(:none, length(m.opp_team)),
+        1,
+        1,
         0,
         0
     )
@@ -15,8 +17,8 @@ function run_mcts_episode(
     m::PokemonBattleMDP;
     n_iterations::Int = 100,
     depth::Int = 10,
-    exploration_constant::Float64 = 1.0,
-    max_turns::Int = 50,
+    exploration_constant::Float64 = 100.0,
+    max_turns::Int = 100,
     seed::Int = 1,
     verbose::Bool = false
 )
@@ -32,9 +34,17 @@ function run_mcts_episode(
     s = initial_pokemon_state(m)
     total_reward = 0.0
     turn = 1
+    n_switches = 0
+
+    start_time = time()
 
     while !isterminal(m, s) && turn <= max_turns
         a = action(planner, s)
+
+        if startswith(String(a), "switch")
+            n_switches += 1
+        end
+
         result = gen(m, s, a, rng)
 
         sp = result.sp
@@ -54,17 +64,19 @@ function run_mcts_episode(
         turn += 1
     end
 
-    outcome = if s.opp_hp <= 0 && s.my_hp <= 0
+    elapsed_time = time() - start_time
+
+    outcome = if all_fainted(s.opp_hps) && all_fainted(s.my_hps)
         :tie
-    elseif s.opp_hp <= 0
+    elseif all_fainted(s.opp_hps)
         :win
-    elseif s.my_hp <= 0
+    elseif all_fainted(s.my_hps)
         :loss
     else
         :max_turns
     end
 
-    return total_reward, outcome, turn - 1
+    return total_reward, outcome, turn - 1, n_switches, elapsed_time
 end
 
 function evaluate_mcts(
@@ -72,15 +84,17 @@ function evaluate_mcts(
     n_episodes::Int = 100,
     n_iterations::Int = 100,
     depth::Int = 10,
-    exploration_constant::Float64 = 1.0,
-    max_turns::Int = 50
+    exploration_constant::Float64 = 100.0,
+    max_turns::Int = 100
 )
     returns = Float64[]
     outcomes = Symbol[]
     turns = Int[]
+    switch_counts = Int[]
+    runtimes = Float64[]
 
     for ep in 1:n_episodes
-        total_reward, outcome, n_turns = run_mcts_episode(
+        total_reward, outcome, n_turns, n_switches, elapsed_time = run_mcts_episode(
             m;
             n_iterations = n_iterations,
             depth = depth,
@@ -93,13 +107,18 @@ function evaluate_mcts(
         push!(returns, total_reward)
         push!(outcomes, outcome)
         push!(turns, n_turns)
+        push!(switch_counts, n_switches)
+        push!(runtimes, elapsed_time)
     end
 
     avg_return = mean(returns)
     win_rate = count(outcomes .== :win) / n_episodes
     avg_turns = mean(turns)
+    avg_switches = mean(switch_counts)
+    avg_runtime = mean(runtimes)
 
-    return returns, outcomes, turns, avg_return, win_rate, avg_turns
+    return returns, outcomes, turns, switch_counts, runtimes,
+           avg_return, win_rate, avg_turns, avg_switches, avg_runtime
 end
 
 function evaluate_mcts_sweep(
@@ -107,18 +126,21 @@ function evaluate_mcts_sweep(
     iteration_list = [1, 5, 10, 25, 50, 100, 250, 500],
     n_episodes::Int = 100,
     depth::Int = 10,
-    exploration_constant::Float64 = 1.0,
-    max_turns::Int = 50
+    exploration_constant::Float64 = 100.0,
+    max_turns::Int = 100
 )
     avg_returns = Float64[]
     return_sems = Float64[]
     win_rates = Float64[]
     avg_turns_list = Float64[]
+    avg_switches_list = Float64[]
+    avg_runtime_list = Float64[]
 
     for n_iter in iteration_list
         println("Evaluating MCTS with n_iterations = ", n_iter)
 
-        returns, outcomes, turns, avg_return, win_rate, avg_turns = evaluate_mcts(
+        returns, outcomes, turns, switch_counts, runtimes,
+        avg_return, win_rate, avg_turns, avg_switches, avg_runtime = evaluate_mcts(
             m;
             n_episodes = n_episodes,
             n_iterations = n_iter,
@@ -133,18 +155,26 @@ function evaluate_mcts_sweep(
         push!(return_sems, sem)
         push!(win_rates, win_rate)
         push!(avg_turns_list, avg_turns)
+        push!(avg_switches_list, avg_switches)
+        push!(avg_runtime_list, avg_runtime)
     end
 
-    return iteration_list, avg_returns, return_sems, win_rates, avg_turns_list
+    return iteration_list,
+           avg_returns,
+           return_sems,
+           win_rates,
+           avg_turns_list,
+           avg_switches_list,
+           avg_runtime_list
 end
 
 function first_action_frequency_sweep(
     m::PokemonBattleMDP;
-    target_action::Symbol = :move2,
+    target_action::Symbol,
     iteration_list = [1, 5, 10, 25, 50, 100, 250, 500],
     n_trials::Int = 100,
     depth::Int = 10,
-    exploration_constant::Float64 = 1.0
+    exploration_constant::Float64 = 100.0
 )
     frequencies = Float64[]
 
@@ -153,18 +183,18 @@ function first_action_frequency_sweep(
     for n_iter in iteration_list
         println("Testing first action choice with n_iterations = ", n_iter)
 
-        solver = MCTSSolver(
-            n_iterations = n_iter,
-            depth = depth,
-            exploration_constant = exploration_constant
-        )
-
-        planner = solve(solver, m)
-
         chosen_actions = Symbol[]
 
         for trial in 1:n_trials
+            solver = MCTSSolver(
+                n_iterations = n_iter,
+                depth = depth,
+                exploration_constant = exploration_constant
+            )
+
+            planner = solve(solver, m)
             a = action(planner, s0)
+
             push!(chosen_actions, a)
         end
 

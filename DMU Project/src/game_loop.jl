@@ -1,20 +1,32 @@
+function initial_pokemon_state(m::PokemonBattleMDP)
+    return PokemonState(
+        [p.max_hp for p in m.my_team],
+        [p.max_hp for p in m.opp_team],
+
+        fill(:none, length(m.my_team)),
+        fill(:none, length(m.opp_team)),
+
+        1,  # my active Pokemon
+        1,  # opponent active Pokemon
+
+        0,
+        0
+    )
+end
+
 function play_mcts_game(m::PokemonBattleMDP;
-                        start_state::PokemonState = PokemonState(
-                            m.my_pokemon.max_hp,
-                            m.opp_pokemon.max_hp,
-                            :none,
-                            :none,
-                            0,
-                            0
-                        ),
+                        start_state::PokemonState = initial_pokemon_state(m),
                         max_turns::Int = 50,
                         seed::Int = 1,
-                        verbose::Bool = true)
+                        verbose::Bool = true,
+                        n_iterations::Int = 100,
+                        depth::Int = 10,
+                        exploration_constant::Float64 = 1.0)
 
     solver = MCTSSolver(
-        n_iterations = 100,
-        depth = 10,
-        exploration_constant = 1.0
+        n_iterations = n_iterations,
+        depth = depth,
+        exploration_constant = exploration_constant
     )
 
     planner = solve(solver, m)
@@ -26,6 +38,10 @@ function play_mcts_game(m::PokemonBattleMDP;
 
     if verbose
         println("Starting game")
+        println("MCTS settings:")
+        println("  n_iterations = ", n_iterations)
+        println("  depth = ", depth)
+        println("  exploration_constant = ", exploration_constant)
         println("Initial state: ", s)
         println()
     end
@@ -56,11 +72,11 @@ function play_mcts_game(m::PokemonBattleMDP;
         println("Final state: ", s)
         println("Total reward: ", total_reward)
 
-        if s.opp_hp <= 0 && s.my_hp <= 0
+        if all_fainted(s.opp_hps) && all_fainted(s.my_hps)
             println("Result: tie")
-        elseif s.opp_hp <= 0
+        elseif all_fainted(s.opp_hps)
             println("Result: you win")
-        elseif s.my_hp <= 0
+        elseif all_fainted(s.my_hps)
             println("Result: you lose")
         else
             println("Result: max turns reached")
