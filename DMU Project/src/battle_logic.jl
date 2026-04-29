@@ -1,3 +1,47 @@
+# -----
+# Helper Fucntions 
+# -----
+function active_status(s::PokemonState, actor::Symbol)
+    if actor == :my
+        return s.my_statuses[s.my_active]
+    elseif actor == :opp
+        return s.opp_statuses[s.opp_active]
+    else
+        error("Unknown actor: $actor")
+    end
+end
+
+function active_speed(m::PokemonBattleMDP, s::PokemonState, actor::Symbol)
+    pokemon = if actor == :my
+        m.my_team[s.my_active]
+    elseif actor == :opp
+        m.opp_team[s.opp_active]
+    else
+        error("Unknown actor: $actor")
+    end
+
+    status = active_status(s, actor)
+
+    if status == :paralyzed
+        return max(pokemon.speed ÷ 2, 1)
+    else
+        return pokemon.speed
+    end
+end
+
+function my_goes_first(m::PokemonBattleMDP, s::PokemonState)
+    my_speed = active_speed(m, s, :my)
+    opp_speed = active_speed(m, s, :opp)
+
+    if my_speed > opp_speed
+        return true
+    elseif my_speed < opp_speed
+        return false
+    else
+        return true  # tie-breaker: player goes first
+    end
+end
+
 function first_alive_index(hps::Vector{Int})
     for i in eachindex(hps)
         if hps[i] > 0
@@ -42,41 +86,11 @@ function resolve_turn(
     my_action::Symbol,
     opp_action::Symbol
 )
-    outcomes = Tuple{Float64, PokemonState}[]
-
-    my_outcomes = apply_my_action(m, s, my_action)
-
-    for (p_my, s_after_me_raw) in my_outcomes
-
-        # Auto-switch if my action caused the opponent active Pokemon to faint
-        s_after_me = auto_switch_fainted(m, s_after_me_raw)
-
-        # If opponent's entire team fainted, the turn ends immediately
-        if all_fainted(s_after_me.opp_hps)
-            push!(outcomes, (p_my, s_after_me))
-            continue
-        end
-
-        # If opponent's active Pokemon fainted but they still have Pokemon left,
-        # auto_switch_fainted already changed s_after_me.opp_active.
-        # The opponent does NOT attack on this same turn after fainting.
-        if s_after_me_raw.opp_hps[s_after_me_raw.opp_active] <= 0
-            push!(outcomes, (p_my, s_after_me))
-            continue
-        end
-
-        opp_outcomes = apply_opp_action(m, s_after_me, opp_action)
-
-        for (p_opp_turn, sp_raw) in opp_outcomes
-
-            # Auto-switch if opponent's action caused my active Pokemon to faint
-            sp = auto_switch_fainted(m, sp_raw)
-
-            push!(outcomes, (p_my * p_opp_turn, sp))
-        end
+    if my_goes_first(m, s)
+        return resolve_ordered_turn(m, s, my_action, :my, opp_action, :opp)
+    else
+        return resolve_ordered_turn(m, s, opp_action, :opp, my_action, :my)
     end
-
-    return outcomes
 end
 
 function sample_opponent_action(m::PokemonBattleMDP, s::PokemonState, rng::AbstractRNG)
@@ -111,4 +125,48 @@ function sample_turn_outcome(outcomes::Vector{Tuple{Float64, PokemonState}}, rng
     end
 
     return outcomes[end][2]
+end
+
+function resolve_ordered_turn(
+    m::PokemonBattleMDP,
+    s::PokemonState,
+    first_action::Symbol,
+    first_actor::Symbol,
+    second_action::Symbol,
+    second_actor::Symbol
+)
+    outcomes = Tuple{Float64, PokemonState}[]
+
+    first_outcomes = apply_action(m, s, first_action, first_actor)
+
+    for (p_first, s_after_first_raw) in first_outcomes
+        s_after_first = auto_switch_fainted(m, s_after_first_raw)
+
+        # If a whole team fainted, the turn ends.
+        if all_fainted(s_after_first.my_hps) || all_fainted(s_after_first.opp_hps)
+            push!(outcomes, (p_first, s_after_first))
+            continue
+        end
+
+        # If the second actor's active Pokémon fainted, it cannot act.
+        second_active_fainted = if second_actor == :my
+            s_after_first_raw.my_hps[s_after_first_raw.my_active] <= 0
+        else
+            s_after_first_raw.opp_hps[s_after_first_raw.opp_active] <= 0
+        end
+
+        if second_active_fainted
+            push!(outcomes, (p_first, s_after_first))
+            continue
+        end
+
+        second_outcomes = apply_action(m, s_after_first, second_action, second_actor)
+
+        for (p_second, sp_raw) in second_outcomes
+            sp = auto_switch_fainted(m, sp_raw)
+            push!(outcomes, (p_first * p_second, sp))
+        end
+    end
+
+    return outcomes
 end

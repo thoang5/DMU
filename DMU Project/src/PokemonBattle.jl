@@ -10,6 +10,7 @@ using Statistics
 export PokemonState, PokemonAction, PokemonBattleMDP
 export play_mcts_game, evaluate_mcts
 export evaluate_mcts_sweep, first_action_frequency_sweep
+export evaluate_greedy
 
 include("types.jl")
 include("actions.jl")

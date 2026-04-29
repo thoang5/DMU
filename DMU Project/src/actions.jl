@@ -1,3 +1,13 @@
+function actor_is_paralyzed(s::PokemonState, actor::Symbol)
+    if actor == :my
+        return s.my_statuses[s.my_active] == :paralyzed
+    elseif actor == :opp
+        return s.opp_statuses[s.opp_active] == :paralyzed
+    else
+        error("Unknown actor: $actor")
+    end
+end
+
 function is_switch_action(a::Symbol)
     return startswith(String(a), "switch")
 end
@@ -61,9 +71,53 @@ function damage_amount(move::Move, attacker_type::Symbol, defender_type::Symbol,
     return max(round(Int, move.power * mult * boost_mult), 0)
 end
 
+function actor_is_paralyzed(s::PokemonState, actor::Symbol)
+    if actor == :my
+        return s.my_statuses[s.my_active] == :paralyzed
+    elseif actor == :opp
+        return s.opp_statuses[s.opp_active] == :paralyzed
+    else
+        error("Unknown actor: $actor")
+    end
+end
+
+
 function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Symbol)
 
+    # Switching is not blocked by paralysis in this simplified model.
+    if is_switch_action(a)
+        return apply_action_no_paralysis(m, s, a, actor)
+    end
 
+    # Paralysis: 25% chance to fail to move.
+    if actor_is_paralyzed(s, actor)
+        normal_outcomes = apply_action_no_paralysis(m, s, a, actor)
+
+        blocked_prob = 0.25
+        move_prob = 0.75
+
+        outcomes = Tuple{Float64, PokemonState}[]
+
+        # 25% chance: fully paralyzed, state does not change
+        push!(outcomes, (blocked_prob, s))
+
+        # 75% chance: action happens normally
+        for (p, sp) in normal_outcomes
+            push!(outcomes, (move_prob * p, sp))
+        end
+
+        return outcomes
+    end
+
+    return apply_action_no_paralysis(m, s, a, actor)
+end
+
+
+function apply_action_no_paralysis(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Symbol)
+
+    # -------------------------
+    # Switch action
+    # -------------------------
     if is_switch_action(a)
         new_active = switch_index(a)
 
@@ -85,7 +139,7 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
 
         elseif actor == :opp
             if new_active == s.opp_active || s.opp_hps[new_active] <= 0
-                return [(1.0, s)]
+                return [(1.0, s)]  # invalid switch, no change
             end
 
             return [(1.0, PokemonState(
@@ -98,9 +152,14 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
                 s.my_boost,
                 0               # reset opponent boost on switch
             ))]
+        else
+            error("Unknown actor: $actor")
         end
     end
 
+    # -------------------------
+    # Identify attacker / defender
+    # -------------------------
     if actor == :my
         attacker = m.my_team[s.my_active]
         defender = m.opp_team[s.opp_active]
@@ -116,7 +175,7 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
     move = attacker.moves[a]
     miss_prob = 1.0 - move.accuracy
 
-    # Copy state pieces so we can modify them safely
+    # Copy state pieces so we can safely modify them
     new_my_hps = copy(s.my_hps)
     new_opp_hps = copy(s.opp_hps)
     new_my_statuses = copy(s.my_statuses)
@@ -167,9 +226,9 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
     # -------------------------
     elseif move.category == :boost
         if actor == :my
-            new_my_boost = min(s.my_boost + 1, 2)
+            new_my_boost = min(s.my_boost + 1, 3)
         elseif actor == :opp
-            new_opp_boost = min(s.opp_boost + 1, 2)
+            new_opp_boost = min(s.opp_boost + 1, 3)
         end
 
     # -------------------------
@@ -185,6 +244,7 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
         end
     end
 
+    # State if the move hits / succeeds
     hit_state = PokemonState(
         new_my_hps,
         new_opp_hps,
@@ -196,6 +256,7 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
         new_opp_boost
     )
 
+    # Accuracy handling
     if move.accuracy >= 1.0
         return [(1.0, hit_state)]
     else
@@ -204,6 +265,16 @@ function apply_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol, actor::Sy
             (miss_prob, s)
         ]
     end
+end
+
+
+function apply_my_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol)
+    return apply_action(m, s, a, :my)
+end
+
+
+function apply_opp_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol)
+    return apply_action(m, s, a, :opp)
 end
 
 function apply_my_action(m::PokemonBattleMDP, s::PokemonState, a::Symbol)

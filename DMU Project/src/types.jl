@@ -11,6 +11,7 @@ struct Pokemon
     name::Symbol
     type::Symbol
     max_hp::Int
+    speed::Int
     moves::Dict{Symbol, Move}
 end
 

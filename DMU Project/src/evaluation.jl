@@ -1,4 +1,18 @@
 using Statistics
+using Random
+
+function best_type_multiplier_against(attacker::Pokemon, defender::Pokemon)
+    best_mult = 0.0
+
+    for move in values(attacker.moves)
+        if move.category == :damage
+            mult = type_multiplier(move.move_type, defender.type)
+            best_mult = max(best_mult, mult)
+        end
+    end
+
+    return best_mult
+end
 
 function initial_pokemon_state(m::PokemonBattleMDP)
     return PokemonState(
@@ -204,3 +218,129 @@ function first_action_frequency_sweep(
 
     return iteration_list, frequencies
 end
+
+function greedy_heuristic_action(m::PokemonBattleMDP, s::PokemonState)
+    legal_actions = POMDPs.actions(m, s)
+
+    best_action = legal_actions[1]
+    best_score = -Inf
+
+    attacker = m.my_team[s.my_active]
+    defender = m.opp_team[s.opp_active]
+
+    for a in legal_actions
+        score = 0.0
+
+        if is_switch_action(a)
+            new_active = switch_index(a)
+            switch_pokemon = m.my_team[new_active]
+
+            # Prefer switching if new Pokemon has a better type matchup
+            current_best = best_type_multiplier_against(attacker, defender)
+            switch_best = best_type_multiplier_against(switch_pokemon, defender)
+
+            score = 20.0 * (switch_best - current_best)
+
+        else
+            move = attacker.moves[a]
+
+            if move.category == :damage
+                dmg = damage_amount(move, attacker.type, defender.type, s.my_boost)
+                score = move.accuracy * dmg
+
+            elseif move.category == :heal
+                missing_hp = attacker.max_hp - s.my_hps[s.my_active]
+                score = min(40, missing_hp)
+
+            elseif move.category == :boost
+                # Encourage Swords Dance if not already boosted
+                score = s.my_boost < 6 ? 50.0 : 0.0
+
+            elseif move.category == :status
+                if move.effect == :paralyze && s.opp_statuses[s.opp_active] == :none
+                    score = 45.0
+                else
+                    score = 0.0
+                end
+            end
+        end
+
+        if score > best_score
+            best_score = score
+            best_action = a
+        end
+    end
+
+    return best_action
+end
+
+function run_greedy_episode(
+    m::PokemonBattleMDP;
+    max_turns::Int = 150,
+    seed::Int = 1
+)
+    rng = MersenneTwister(seed)
+    s = initial_pokemon_state(m)
+
+    total_reward = 0.0
+    turn = 1
+    n_switches = 0
+
+    while !isterminal(m, s) && turn <= max_turns
+        a = greedy_heuristic_action(m, s)
+
+        if startswith(String(a), "switch")
+            n_switches += 1
+        end
+
+        result = gen(m, s, a, rng)
+
+        s = result.sp
+        total_reward += result.r
+        turn += 1
+    end
+
+    outcome = if all_fainted(s.opp_hps) && all_fainted(s.my_hps)
+        :tie
+    elseif all_fainted(s.opp_hps)
+        :win
+    elseif all_fainted(s.my_hps)
+        :loss
+    else
+        :max_turns
+    end
+
+    return total_reward, outcome, turn - 1, n_switches
+end
+
+function evaluate_greedy(
+    m::PokemonBattleMDP;
+    n_episodes::Int = 100,
+    max_turns::Int = 150
+)
+    returns = Float64[]
+    outcomes = Symbol[]
+    turns = Int[]
+    switches = Int[]
+
+    for ep in 1:n_episodes
+        total_reward, outcome, n_turns, n_switches = run_greedy_episode(
+            m;
+            max_turns = max_turns,
+            seed = ep
+        )
+
+        push!(returns, total_reward)
+        push!(outcomes, outcome)
+        push!(turns, n_turns)
+        push!(switches, n_switches)
+    end
+
+    avg_return = mean(returns)
+    win_rate = count(outcomes .== :win) / n_episodes
+    avg_turns = mean(turns)
+    avg_switches = mean(switches)
+
+    return avg_return, win_rate, avg_turns, avg_switches
+end
+
