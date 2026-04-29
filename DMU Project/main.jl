@@ -7,7 +7,7 @@ const PB = PokemonBattle
 tackle = PB.Move(:tackle, :NormalType, :damage, 40, 1.0, :none)
 thunderbolt = PB.Move(:thunderbolt, :ElectricType, :damage, 100, 1.0, :none)
 water_gun = PB.Move(:water_gun, :WaterType, :damage, 60, 1.0, :none)
-grass_knot = PB.Move(:grass_knot, :GrassType, :damage, 120, 1.0, :none)
+grass_knot = PB.Move(:grass_knot, :GrassType, :damage, 120, 0.8, :none)
 bite = PB.Move(:bite, :DarkType, :damage, 100, 1.0, :none)
 nuzzle = PB.Move(:nuzzle, :ElectricType, :damage, 40, 1.0, :paralyze)
 
@@ -66,6 +66,39 @@ iters, avg_returns, return_sems, win_rates, avg_turns = PB.evaluate_mcts_sweep(
     max_turns = 50
 )
 
+iters2, thunderbolt_freq = PB.first_action_frequency_sweep(
+    m;
+    target_action = :move2,   # :move2 = Thunderbolt for Pikachu
+    iteration_list = iteration_list,
+    n_trials = 100,
+    depth = 10,
+    exploration_constant = 1.0
+)
+
+iters3, grassknot_freq = PB.first_action_frequency_sweep(
+    m;
+    target_action = :move4,   # :move4 = Grass Knot for Pikachu
+    iteration_list = iteration_list,
+    n_trials = 100,
+    depth = 10,
+    exploration_constant = 1.0
+)
+
+p_grass = plot(
+    iters3,
+    grassknot_freq,
+    marker = :circle,
+    xscale = :log10,
+    xlabel = "MCTS Iterations per Move",
+    ylabel = "Frequency of Choosing Grass Knot",
+    ylim = (0, 1.2),
+    label = ":move4 = Grass Knot",
+    title = "MCTS Grass Knot First Move Choice vs Search Budget"
+)
+
+savefig(p_grass, "mcts_grassknot_frequency_vs_iterations.png")
+println("Saved mcts_grassknot_frequency_vs_iterations.png")
+
 p1 = plot(
     iters,
     avg_returns,
@@ -94,3 +127,30 @@ p2 = plot(
 
 savefig(p2, "mcts_win_rate_vs_iterations.png")
 
+p3 = plot(
+    iters,
+    thunderbolt_freq,
+    marker = :circle,
+    xscale = :log10,
+    xlabel = "MCTS Iterations per Move",
+    ylabel = "Frequency of Choosing Thunderbolt",
+    ylim = (0, 1.2),
+    label = ":move2 = Thunderbolt",
+    title = "MCTS First Move Choice vs Search Budget"
+)
+
+savefig(p3, "mcts_thunderbolt_frequency_vs_iterations.png")
+
+p4 = plot(
+    iters,
+    avg_turns,
+    marker = :circle,
+    xscale = :log10,
+    xlabel = "MCTS Iterations per Move",
+    ylabel = "Average Turns per Battle",
+    label = "Average Turns",
+    title = "Battle Length vs MCTS Search Budget"
+)
+
+savefig(p4, "mcts_avg_turns_vs_iterations.png")
+println("Saved mcts_avg_turns_vs_iterations.png")
